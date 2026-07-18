@@ -10,6 +10,7 @@ interface Props {
 
 export default function ProductCapture({ imageDataUrl, onConfirm, onCancel }: Props) {
   const [ocrText, setOcrText] = useState('');
+  const [ocrSource, setOcrSource] = useState<'claude' | 'tesseract' | null>(null);
   const [inputText, setInputText] = useState('');
   const [ocrRunning, setOcrRunning] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -69,14 +70,108 @@ export default function ProductCapture({ imageDataUrl, onConfirm, onCancel }: Pr
     img.src = imageDataUrl;
   }
 
+  function cropAndPreprocess(src: string): Promise<string> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const cw = img.width;
+        const ch = img.height;
+        // Crop to the same bounding box region shown visually (center 70%)
+        const rx = Math.floor(cw * 0.15);
+        const ry = Math.floor(ch * 0.15);
+        const rw = Math.floor(cw * 0.7);
+        const rh = Math.floor(ch * 0.7);
+
+        // Upscale 2x for better character resolution
+        const scale = 2;
+        const out = document.createElement('canvas');
+        out.width = rw * scale;
+        out.height = rh * scale;
+        const ctx = out.getContext('2d')!;
+
+        // Draw cropped + scaled region
+        ctx.drawImage(img, rx, ry, rw, rh, 0, 0, out.width, out.height);
+
+        // Convert to grayscale and boost contrast
+        const imageData = ctx.getImageData(0, 0, out.width, out.height);
+        const d = imageData.data;
+        let minL = 255, maxL = 0;
+
+        // First pass: compute luminance range for contrast stretch
+        for (let i = 0; i < d.length; i += 4) {
+          const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          if (lum < minL) minL = lum;
+          if (lum > maxL) maxL = lum;
+        }
+        const range = maxL - minL || 1;
+
+        // Second pass: grayscale + contrast stretch
+        for (let i = 0; i < d.length; i += 4) {
+          const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          const stretched = Math.round(((lum - minL) / range) * 255);
+          d[i] = d[i + 1] = d[i + 2] = stretched;
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        resolve(out.toDataURL('image/png'));
+      };
+      img.src = src;
+    });
+  }
+
+  function pickBestLine(raw: string): string {
+    const lines = raw
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length >= 3)
+      // Keep lines that look like product names: mostly letters/numbers/spaces
+      .filter((l) => {
+        const alphaRatio = (l.match(/[a-zA-Z0-9 ]/g) ?? []).length / l.length;
+        return alphaRatio > 0.6;
+      });
+
+    if (lines.length === 0) return '';
+
+    // Score: longer lines with more words and real words rank higher
+    const scored = lines.map((l) => {
+      const words = l.split(/\s+/).filter((w) => w.length > 1);
+      return { line: l, score: words.length * 3 + l.length };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0].line;
+  }
+
   async function runOCR() {
     setOcrRunning(true);
     try {
+      // Try Claude Vision API first (most accurate for product packaging)
+      const cropped = await cropAndPreprocess(imageDataUrl);
+      const visionRes = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageDataUrl: cropped }),
+      });
+
+      if (visionRes.ok) {
+        const { text } = await visionRes.json();
+        if (text) {
+          setOcrText(text);
+          setOcrSource('claude');
+          setInputText(text);
+          return;
+        }
+      }
+
+      // Fallback: Tesseract on preprocessed cropped image
       const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('eng');
-      const { data } = await worker.recognize(imageDataUrl);
+      // PSM 6: assume a single uniform block of text — better for product labels
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await worker.setParameters({ tessedit_pageseg_mode: '6' as any });
+      const { data } = await worker.recognize(cropped);
       await worker.terminate();
-      const text = data.text.trim().split('\n')[0].trim();
+      const text = pickBestLine(data.text);
+      setOcrSource('tesseract');
       setOcrText(text);
       setInputText(text);
     } catch (err) {
@@ -135,7 +230,10 @@ export default function ProductCapture({ imageDataUrl, onConfirm, onCancel }: Pr
         ) : (
           ocrText && (
             <div className="font-mono text-xs text-gray-400 mb-2">
-              OCR: <span className="text-cyan-300">&quot;{ocrText}&quot;</span>
+              <span className={ocrSource === 'claude' ? 'text-purple-400' : 'text-gray-500'}>
+                {ocrSource === 'claude' ? '⚡ Claude Vision' : '🔍 Tesseract'}:
+              </span>{' '}
+              <span className="text-cyan-300">&quot;{ocrText}&quot;</span>
             </div>
           )
         )}
