@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const WORKER_URL = process.env.OCR_WORKER_URL ?? 'http://localhost:3001';
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ text: null, source: 'no_key' }, { status: 200 });
-  }
-
   try {
     const { imageDataUrl } = await req.json();
 
@@ -15,36 +10,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'imageDataUrl required' }, { status: 400 });
     }
 
-    // Strip the data URL prefix to get pure base64
-    const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '');
-    const mediaType = imageDataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 64,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: base64 },
-            },
-            {
-              type: 'text',
-              text: 'Extract only the main product name from this image. Reply with ONLY the product name — no brand, no extra words, no punctuation. If you see "Single Origin Cacao Powder" reply exactly "Single Origin Cacao Powder". If nothing is readable, reply "UNKNOWN".',
-            },
-          ],
-        },
-      ],
+    // Delegate to local OCR worker (started with `npm run worker`)
+    const workerRes = await fetch(`${WORKER_URL}/ocr`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageDataUrl }),
+      signal: AbortSignal.timeout(15000),
     });
 
-    const text = response.content[0].type === 'text' ? response.content[0].text.trim() : null;
-    const cleaned = text === 'UNKNOWN' || !text ? null : text;
+    if (!workerRes.ok) {
+      return NextResponse.json({ text: null, source: 'worker_error' }, { status: 200 });
+    }
 
-    return NextResponse.json({ text: cleaned, source: 'claude' });
+    const data = await workerRes.json();
+    return NextResponse.json(data);
   } catch (err) {
-    console.error('Claude Vision OCR failed:', err);
-    return NextResponse.json({ text: null, source: 'error' }, { status: 200 });
+    // Worker is not running — Next.js will fall back to Tesseract in the browser
+    console.warn('[api/ocr] Worker unreachable:', (err as Error).message);
+    return NextResponse.json({ text: null, source: 'worker_offline' }, { status: 200 });
   }
 }
