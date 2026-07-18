@@ -17,3 +17,7 @@ node_modules/
 npm-debug.log*
 .vercel
 *.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Generated files
+public/checky-pitch-deck.html

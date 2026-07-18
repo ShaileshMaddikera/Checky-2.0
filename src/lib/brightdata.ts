@@ -3,6 +3,51 @@ import { Product } from './types';
 const BRIGHTDATA_API = 'https://api.brightdata.com/datasets/v3/scrape';
 const DATASET_ID = 'gd_l7q7dkf244hwjntr0';
 
+// Bright Data's Amazon keyword search dataset returns various field name formats.
+// This normalizes the raw response into our Product shape.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeProduct(raw: Record<string, any>): Product {
+  // Price: may come as number, string ("$29.99"), or under final_price/initial_price
+  const rawPrice = raw.final_price ?? raw.price ?? raw.initial_price ?? raw.sale_price;
+  let price: number | undefined;
+  if (rawPrice !== undefined && rawPrice !== null && rawPrice !== '') {
+    const n = typeof rawPrice === 'string'
+      ? parseFloat(rawPrice.replace(/[^0-9.]/g, ''))
+      : Number(rawPrice);
+    if (!isNaN(n) && n > 0) price = n;
+  }
+
+  // Image: may be main_image, thumbnail, or image
+  const main_image: string | undefined =
+    raw.main_image || raw.thumbnail || raw.image || undefined;
+
+  // reviews_count: may be reviews or reviews_count
+  const reviews_count =
+    raw.reviews_count ?? raw.reviews ?? undefined;
+
+  return {
+    title: raw.title ?? '',
+    url: raw.url ?? '',
+    asin: raw.asin || undefined,
+    price,
+    currency: raw.currency || 'USD',
+    rating: raw.rating != null ? Number(raw.rating) : undefined,
+    reviews_count: reviews_count != null ? Number(reviews_count) : undefined,
+    brand: raw.brand || undefined,
+    main_image,
+    description: raw.description || undefined,
+    availability: raw.availability || undefined,
+    seller_name: raw.seller_name || undefined,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeProducts(raw: Record<string, any>[]): Product[] {
+  return raw
+    .map(normalizeProduct)
+    .filter((p) => p.title && p.url);
+}
+
 export async function searchAmazonProducts(keyword: string): Promise<Product[]> {
   const apiKey = process.env.BRIGHTDATA_API_KEY;
 
@@ -33,7 +78,9 @@ export async function searchAmazonProducts(keyword: string): Promise<Product[]> 
 
     // API may return snapshot_id for async, or direct array
     if (Array.isArray(data)) {
-      return data as Product[];
+      const products = normalizeProducts(data);
+      console.log(`[brightdata] direct response: ${products.length} products, first has price=${products[0]?.price}, image=${!!products[0]?.main_image}`);
+      return products;
     }
 
     if (data.snapshot_id) {
@@ -61,7 +108,11 @@ async function pollSnapshot(snapshotId: string, apiKey: string): Promise<Product
 
     if (res.status === 200) {
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) return data as Product[];
+      if (Array.isArray(data) && data.length > 0) {
+        const products = normalizeProducts(data);
+        console.log(`[brightdata] snapshot ${snapshotId}: ${products.length} products, first has price=${products[0]?.price}, image=${!!products[0]?.main_image}`);
+        return products;
+      }
     }
     // 202 = still running, keep polling
     console.log(`[brightdata] snapshot ${snapshotId} still running (attempt ${i + 1}/${maxAttempts})`);

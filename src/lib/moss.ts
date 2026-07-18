@@ -101,9 +101,16 @@ export async function searchMoss(query: string, topK = 5): Promise<Product[]> {
 
   try {
     const results = await c.query(INDEX_NAME, query, { topK });
+    const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+
     return (results.docs ?? [])
-      .filter((d) => (d.score ?? 0) > 0.55)
-      .map(docToProduct);
+      .filter((d) => (d.score ?? 0) > 0.75)
+      .map(docToProduct)
+      .filter((p) => {
+        // Require at least one query word to appear in the title or brand
+        const haystack = `${p.title} ${p.brand ?? ''}`.toLowerCase();
+        return queryWords.some((w) => haystack.includes(w));
+      });
   } catch (err) {
     console.warn('[moss] query error:', (err as Error).message);
     return [];

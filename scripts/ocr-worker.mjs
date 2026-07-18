@@ -4,14 +4,14 @@
  * Start:  npm run worker
  * Stop:   Ctrl+C
  *
- * Next.js /api/ocr proxies image POST requests to http://localhost:3001/ocr
+ * Next.js /api/ocr proxies image POST requests to http://localhost:3002/ocr
  * This worker spawns `claude --print` for each request using the logged-in session.
  */
 
 import http from 'http';
 import { spawn } from 'child_process';
 
-const PORT = process.env.OCR_WORKER_PORT ?? 3001;
+const PORT = process.env.OCR_WORKER_PORT ?? 3002;
 
 const PROMPT =
   'Look at this product image and extract ONLY the main product name ' +
