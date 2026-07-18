@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Checky — Pitch Deck</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Lora:ital,wght@0,400;0,600;1,400;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Design tokens ── */
+    :root {
+      --green:      #00ff88;
+      --green-soft: rgba(0, 255, 136, 0.12);
+      --green-mid:  rgba(0, 255, 136, 0.35);
+      --ink:        #111110;
+      --ink-mid:    #5a5955;
+      --ink-light:  #a8a59f;
+      --paper:      #faf9f6;
+      --paper-2:    #f2f0ea;
+      --border:     #dedad0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--paper);
+      font-family: 'Lora', Georgia, serif;
+      color: var(--ink);
+      overflow: hidden;
+      cursor: default;
+    }
+
+    /* subtle grain texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      background-size: 200px 200px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Progress bar ── */
+    #progress {
+      position: fixed;
+      top: 0; left: 0;
+      height: 2px;
+      background: var(--green);
+      transition: width 0.5s cubic-bezier(.4,0,.2,1);
+      z-index: 200;
+      box-shadow: 0 0 8px var(--green);
+    }
+
+    /* ── Corner brackets ── */
+    .corners {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .corners span {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-color: var(--green-mid);
+      border-style: solid;
+    }
+    .corners span:nth-child(1) { top: 32px;    left: 48px;  border-width: 2px 0 0 2px; }
+    .corners span:nth-child(2) { top: 32px;    right: 48px; border-width: 2px 2px 0 0; }
+    .corners span:nth-child(3) { bottom: 32px; left: 48px;  border-width: 0 0 2px 2px; }
+    .corners span:nth-child(4) { bottom: 32px; right: 48px; border-width: 0 2px 2px 0; }
+
+    /* ── Slide engine ── */
+    #deck { position: relative; width: 100%; height: 100%; }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 72px 96px 64px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(20px);
+      transition: opacity 0.45s cubic-bezier(.4,0,.2,1),
+                  transform 0.45s cubic-bezier(.4,0,.2,1);
+      z-index: 1;
+    }
+    .slide.active {
+      opacity: 1;
+      pointer-events: all;
+      transform: translateY(0);
+    }
+    .slide.out {
+      opacity: 0;
+      transform: translateY(-12px);
+    }
+
+    /* ── Slide metadata ── */
+    .slide-num {
+      position: absolute;
+      bottom: 32px;
+      left: 48px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      color: var(--ink-light);
+    }
+
+    /* ── Shared typography ── */
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .tag::before {
+      content: '';
+      display: block;
+      width: 20px;
+      height: 1px;
+      background: var(--green);
+    }
+
+    .headline {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      line-height: 1.0;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+    }
+
+    /* ── Placeholder boxes ── */
+    .ph {
+      border: 1.5px dashed var(--border);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: var(--ink-light);
+      background: var(--paper-2);
+      text-align: center;
+    }
+
+    /* ════════════════════════════
+       SLIDE 1 — Title
+    ════════════════════════════ */
+    #s1 {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+    }
+    #s1 .left-col {
+      grid-column: 1;
+      grid-row: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    #s1 .right-col {
+      grid-column: 2;
+      grid-row: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-left: 48px;
+    }
+    #s1 .bottom-row {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      padding-top: 32px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    #s1 .wordmark {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(72px, 11vw, 148px);
+      line-height: 0.92;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+    }
+    #s1 .wordmark .dot {
+      color: var(--green);
+    }
+    #s1 .tagline {
+      font-family: 'Lora', serif;
+      font-style: italic;
+      font-size: clamp(16px, 1.8vw, 22px);
+      color: var(--ink-mid);
+      margin-top: 28px;
+      line-height: 1.5;
+      max-width: 400px;
+    }
+
+    #s1 .visual-ph {
+      width: 100%;
+      max-width: 340px;
+      height: 340px;
+      object-fit: cover;
+      border-radius: 6px;
+    }
+
+    #s1 .powered-by {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--ink-light);
+      flex-wrap: wrap;
+    }
+    #s1 .powered-by .tech {
+      color: var(--ink-mid);
+      font-weight: 500;
+    }
+    #s1 .powered-by .sep {
+      color: var(--border);
+      margin: 0 2px;
+    }
+
+    /* ════════════════════════════
+       SLIDE 2 — Problem
+    ════════════════════════════ */
+    #s2 .layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 72px;
+      align-items: start;
+      margin-top: 8px;
+      flex: 1;
+    }
+    #s2 .big-quote {
+      font-family: 'Lora', serif;
+      font-style: italic;
+      font-size: clamp(26px, 3.2vw, 40px);
+      line-height: 1.28;
+      color: var(--ink);
+      margin-bottom: 36px;
+      position: relative;
+    }
+    #s2 .big-quote::before {
+      content: '"';
+      position: absolute;
+      top: -20px;
+      left: -24px;
+      font-size: 80px;
+      color: var(--green-soft);
+      font-family: 'Lora', serif;
+      line-height: 1;
+    }
+    .points {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .point {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .point-n {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      color: var(--green);
+      background: var(--green-soft);
+      border: 1px solid var(--green-mid);
+      padding: 3px 7px;
+      border-radius: 2px;
+      flex-shrink: 0;
+      margin-top: 4px;
+      letter-spacing: 0.08em;
+    }
+    .point-t {
+      font-size: clamp(13px, 1.3vw, 16px);
+      line-height: 1.65;
+      color: var(--ink-mid);
+    }
+    #s2 .img-ph {
+      height: 300px;
+      object-fit: cover;
+      border-radius: 6px;
+      width: 100%;
+    }
+
+    /* ════════════════════════════
+       SLIDE 3 — Solution
+    ════════════════════════════ */
+    #s3 .big {
+      font-size: clamp(44px, 6.5vw, 82px);
+      margin-bottom: 40px;
+    }
+    #s3 .flow {
+      display: grid;
+      grid-template-columns: 1fr 28px 1fr 28px 1fr;
+      gap: 0;
+      align-items: start;
+      flex: 1;
+    }
+    .step-card {
+      background: var(--paper-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px 22px 28px;
+    }
+    .step-n {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      color: var(--green);
+      margin-bottom: 14px;
+    }
+    .step-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: clamp(15px, 1.5vw, 19px);
+      margin-bottom: 10px;
+      color: var(--ink);
+    }
+    .step-voice {
+      font-family: 'Lora', serif;
+      font-style: italic;
+      font-size: 12px;
+      color: var(--green);
+      background: var(--green-soft);
+      border-left: 2px solid var(--green);
+      padding: 6px 10px;
+      margin-bottom: 12px;
+      border-radius: 0 4px 4px 0;
+    }
+    .step-desc {
+      font-size: clamp(12px, 1.1vw, 14px);
+      line-height: 1.65;
+      color: var(--ink-mid);
+    }
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      color: var(--ink-light);
+      align-self: center;
+    }
+    #s3 .vs-note {
+      margin-top: 28px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-light);
+      letter-spacing: 0.14em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #s3 .vs-note .crossed {
+      text-decoration: line-through;
+      color: var(--ink-light);
+    }
+    #s3 .vs-note .diff {
+      color: var(--green);
+      border-bottom: 1px solid var(--green-mid);
+    }
+
+    /* ════════════════════════════
+       SLIDE 4 — Tech Stack
+    ════════════════════════════ */
+    #s4 .big {
+      font-size: clamp(34px, 4.8vw, 62px);
+      margin-bottom: 36px;
+      flex-shrink: 0;
+    }
+    #s4 .arch {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+    .arch-node {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 18px 22px;
+      background: var(--paper-2);
+      position: relative;
+    }
+    .arch-node::after {
+      content: '→';
+      position: absolute;
+      right: -14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--ink-light);
+      z-index: 1;
+    }
+    .arch-node:last-child::after { display: none; }
+    .arch-logo {
+      height: 44px;
+      margin-bottom: 12px;
+      object-fit: contain;
+      object-position: left center;
+      width: 100%;
+    }
+    .arch-name {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--ink);
+    }
+    .arch-role {
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--ink-light);
+    }
+
+    #s4 .stats {
+      display: flex;
+      gap: 56px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+    }
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stat-val {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(28px, 3.5vw, 44px);
+      line-height: 1;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+    }
+    .stat-val em {
+      color: var(--green);
+      font-style: normal;
+    }
+    .stat-lbl {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--ink-light);
+      text-transform: uppercase;
+    }
+
+    /* ════════════════════════════
+       SLIDE 5 — Demo
+    ════════════════════════════ */
+    #s5 {
+      justify-content: center;
+    }
+    #s5 .cta-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #s5 .cta-label::before {
+      content: '';
+      display: block;
+      width: 28px;
+      height: 1px;
+      background: var(--green);
+    }
+    #s5 .cta {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(64px, 12vw, 148px);
+      line-height: 0.93;
+      letter-spacing: -0.04em;
+      color: var(--ink);
+    }
+    #s5 .cta .go {
+      display: block;
+      color: var(--ink-mid);
+    }
+    #s5 .cta .demo {
+      display: block;
+      color: var(--ink);
+    }
+    #s5 .cta .arrow {
+      display: inline-block;
+      color: var(--green);
+      margin-left: 12px;
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: translateX(0); }
+      50%       { opacity: 0.6; transform: translateX(6px); }
+    }
+    #s5 .sub {
+      margin-top: 44px;
+      font-family: 'Lora', serif;
+      font-style: italic;
+      font-size: 18px;
+      color: var(--ink-light);
+    }
+
+    /* ── Nav hint ── */
+    #nav-hint {
+      position: fixed;
+      bottom: 32px;
+      right: 48px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: var(--ink-light);
+      z-index: 100;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="progress"></div>
+
+  <div id="deck">
+
+    <!-- ═══════════════════════════ SLIDE 1: Title ═══════════════════════════ -->
+    <div class="slide active" id="s1">
+      <div class="corners"><span></span><span></span><span></span><span></span></div>
+
+      <div class="left-col">
+        <div class="wordmark">checky<span class="dot">.</span></div>
+        <div class="tagline">Joy of offline shopping,<br>smarts of online.</div>
+      </div>
+
+      <div class="right-col">
+        <img src="pitch-images/slide1-demo.png" alt="smart glass view" class="visual-ph" onerror="this.outerHTML='<div class=\'ph visual-ph\'>[ smart glass view<br>product capture demo ]</div>'" />
+      </div>
+
+      <div class="bottom-row">
+        <div class="powered-by">
+          POWERED BY
+          <span class="sep">—</span>
+          <span class="tech">Bright Data</span>
+          <span class="sep">·</span>
+          <span class="tech">Moss.dev</span>
+          <span class="sep">·</span>
+          <span class="tech">Claude Vision</span>
+          <span class="sep">·</span>
+          <span class="tech">LiveKit</span>
+        </div>
+      </div>
+
+      <div class="slide-num">01 / 05</div>
+    </div>
+
+    <!-- ═══════════════════════════ SLIDE 2: Problem ═══════════════════════════ -->
+    <div class="slide" id="s2">
+      <div class="corners"><span></span><span></span><span></span><span></span></div>
+      <div class="tag">The Problem</div>
+
+      <div class="layout">
+        <div>
+          <div class="big-quote">My mom absolutely<br>loves shopping.</div>
+          <div class="points">
+            <div class="point">
+              <span class="point-n">01</span>
+              <span class="point-t">She goes to local markets, grocery stores, and department stores — every week, rain or shine. The ritual itself brings her joy.</span>
+            </div>
+            <div class="point">
+              <span class="point-n">02</span>
+              <span class="point-t">Psychological research shows shopping triggers the same mental reward as hunting did for our ancestors. The joy is in the <em>act</em> — not just the purchase.</span>
+            </div>
+            <div class="point">
+              <span class="point-n">03</span>
+              <span class="point-t">ShopSavvy, BuyVia, Honey — they help you save, but they break the flow. They pull you out of the moment. Checky doesn't.</span>
+            </div>
+          </div>
+        </div>
+        <img src="pitch-images/slide2-shopping.jpg" alt="shopping scene" class="img-ph" onerror="this.outerHTML='<div class=\'ph img-ph\'>[ shopping scene<br>offline market image ]</div>'" />
+      </div>
+
+      <div class="slide-num">02 / 05</div>
+    </div>
+
+    <!-- ═══════════════════════════ SLIDE 3: Solution ═══════════════════════════ -->
+    <div class="slide" id="s3">
+      <div class="corners"><span></span><span></span><span></span><span></span></div>
+      <div class="tag">The Solution</div>
+
+      <div class="headline big">Three words.<br>Infinite savings.</div>
+
+      <div class="flow">
+        <div class="step-card">
+          <div class="step-n">STEP 01</div>
+          <div class="step-title">"Hey Checky"</div>
+          <div class="step-voice">"Yes, I'm here."</div>
+          <div class="step-desc">Voice activation wakes the assistant. Keep walking the aisle — no phone, no friction.</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="step-card">
+          <div class="step-n">STEP 02</div>
+          <div class="step-title">"Check this out"</div>
+          <div class="step-voice">scanning product...</div>
+          <div class="step-desc">Point at any product. Checky captures the label, runs OCR + Claude Vision, identifies it in under a second.</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="step-card">
+          <div class="step-n">STEP 03</div>
+          <div class="step-title">Compare &amp; decide</div>
+          <div class="step-voice">"Found it. $3.29 at Walmart."</div>
+          <div class="step-desc">Live prices from Amazon &amp; Walmart. Similar alternatives. Ask follow-up questions — even dietary ones.</div>
+        </div>
+      </div>
+
+      <div class="vs-note">
+        UNLIKE:
+        <span class="crossed">ShopSavvy</span>
+        <span class="crossed">BuyVia</span>
+        <span class="crossed">Honey</span>
+        —
+        <span class="diff">Checky keeps the joy of offline shopping intact</span>
+      </div>
+
+      <div class="slide-num">03 / 05</div>
+    </div>
+
+    <!-- ═══════════════════════════ SLIDE 4: Tech Stack ═══════════════════════════ -->
+    <div class="slide" id="s4">
+      <div class="corners"><span></span><span></span><span></span><span></span></div>
+      <div class="tag">How It Works</div>
+
+      <div class="headline big">Built on a foundation<br>of 1M+ products.</div>
+
+      <div class="arch">
+        <div class="arch-node">
+          <img src="pitch-images/logo-brightdata.png" alt="Bright Data" class="arch-logo" onerror="this.outerHTML='<div class=\'ph arch-logo\'>[ Bright Data ]</div>'" />
+          <div class="arch-name">Bright Data</div>
+          <div class="arch-role">Scrapes Amazon &amp; Walmart at scale. Real-time product data, live prices.</div>
+        </div>
+        <div class="arch-node">
+          <img src="pitch-images/logo-moss.png" alt="Moss.dev" class="arch-logo" onerror="this.outerHTML='<div class=\'ph arch-logo\'>[ Moss.dev ]</div>'" />
+          <div class="arch-name">Moss Index</div>
+          <div class="arch-role">Semantic vector search across 1M+ products. Sub-10ms cache hits.</div>
+        </div>
+        <div class="arch-node">
+          <img src="pitch-images/logo-gemini.png" alt="Gemini" class="arch-logo" onerror="this.outerHTML='<div class=\'ph arch-logo\'>[ Gemini Flash ]</div>'" />
+          <div class="arch-name">Gemini Flash</div>
+          <div class="arch-role">Extracts product name from camera capture. No barcode needed.</div>
+        </div>
+        <div class="arch-node">
+          <img src="pitch-images/logo-livekit.png" alt="LiveKit" class="arch-logo" onerror="this.outerHTML='<div class=\'ph arch-logo\'>[ LiveKit ]</div>'" />
+          <div class="arch-name">LiveKit + Moss</div>
+          <div class="arch-role">Real-time voice agent. Answers follow-up questions naturally.</div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-val">1<em>M+</em></span>
+          <span class="stat-lbl">Products indexed</span>
+        </div>
+        <div class="stat">
+          <span class="stat-val">&lt;<em>1s</em></span>
+          <span class="stat-lbl">Identify time</span>
+        </div>
+        <div class="stat">
+          <span class="stat-val"><em>2</em> retailers</span>
+          <span class="stat-lbl">Live price compare</span>
+        </div>
+        <div class="stat">
+          <span class="stat-val"><em>∞</em></span>
+          <span class="stat-lbl">Follow-up questions</span>
+        </div>
+      </div>
+
+      <div class="slide-num">04 / 05</div>
+    </div>
+
+    <!-- ═══════════════════════════ SLIDE 5: Demo ═══════════════════════════ -->
+    <div class="slide" id="s5">
+      <div class="corners"><span></span><span></span><span></span><span></span></div>
+
+      <div class="cta-label">▶ live demo</div>
+      <div class="cta">
+        <span class="go">go to</span>
+        <span class="demo">demo<span class="arrow">→</span></span>
+      </div>
+      <div class="sub">see checky in action</div>
+
+      <div class="slide-num">05 / 05</div>
+    </div>
+
+  </div>
+
+  <div id="nav-hint">← / → to navigate</div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const progress = document.getElementById('progress');
+    let cur = 0;
+
+    function goTo(idx) {
+      if (idx < 0 || idx >= slides.length) return;
+      slides[cur].classList.remove('active');
+      slides[cur].classList.add('out');
+      setTimeout(() => slides[cur].classList.remove('out'), 500);
+      cur = idx;
+      slides[cur].classList.add('active');
+      progress.style.width = ((cur + 1) / slides.length * 100) + '%';
+    }
+
+    // Init
+    progress.style.width = (1 / slides.length * 100) + '%';
+
+    // Keyboard
+    document.addEventListener('keydown', e => {
+      if (['ArrowRight', 'ArrowDown', ' '].includes(e.key)) { e.preventDefault(); goTo(cur + 1); }
+      if (['ArrowLeft', 'ArrowUp'].includes(e.key)) { e.preventDefault(); goTo(cur - 1); }
+    });
+
+    // Click (right half = next, left half = prev)
+    document.addEventListener('click', e => {
+      if (e.target.closest('a, button')) return;
+      goTo(e.clientX > window.innerWidth / 2 ? cur + 1 : cur - 1);
+    });
+
+    // Touch swipe
+    let touchX = 0;
+    document.addEventListener('touchstart', e => touchX = e.touches[0].clientX, { passive: true });
+    document.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - touchX;
+      if (Math.abs(dx) > 48) goTo(dx < 0 ? cur + 1 : cur - 1);
+    }, { passive: true });
+  </script>
+</body>
+</html>
