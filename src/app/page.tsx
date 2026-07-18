@@ -87,7 +87,13 @@ export default function HomePage() {
         body: JSON.stringify({ keyword: productName }),
       });
       const data = await res.json();
-      setSearchResult({ query: productName, products: data.products ?? [], timestamp: Date.now() });
+      setSearchResult({
+        query: productName,
+        products: data.products ?? [],
+        timestamp: Date.now(),
+        source: data.source,
+        pending: data.pending ?? false,
+      });
       setAppState('results');
     } catch (err) {
       console.error('Search failed:', err);

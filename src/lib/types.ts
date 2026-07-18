@@ -17,6 +17,8 @@ export interface SearchResult {
   query: string;
   products: Product[];
   timestamp: number;
+  source?: 'moss' | 'brightdata' | 'mock';
+  pending?: boolean; // true when Bright Data is still fetching; mock shown in the meantime
 }
 
 export type AppState =

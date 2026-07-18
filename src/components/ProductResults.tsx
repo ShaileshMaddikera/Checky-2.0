@@ -206,11 +206,22 @@ export default function ProductResults({ result, likedAsins, excludedAsins, onLi
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-green-900/40">
-          <div>
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-xs glow-green tracking-widest">PRICE INTEL</span>
-            <span className="font-mono text-xs text-gray-500 ml-3">
+            <span className="font-mono text-xs text-gray-500">
               &quot;{result.query}&quot; · {visible.length} results
             </span>
+            {result.source === 'moss' && (
+              <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(170,0,255,0.15)', border: '1px solid rgba(170,0,255,0.4)', color: '#c084fc' }}>
+                ⚡ cached
+              </span>
+            )}
+            {result.pending && (
+              <span className="font-mono text-xs px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: 'rgba(0,204,255,0.1)', border: '1px solid rgba(0,204,255,0.3)', color: 'var(--hud-blue)' }}>
+                <span className="inline-block w-2 h-2 rounded-full border border-cyan-400 border-t-transparent animate-spin" />
+                fetching live prices…
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {priceDiff && Number(priceDiff) > 0 && (

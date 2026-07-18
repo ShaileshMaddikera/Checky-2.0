@@ -1,6 +1,6 @@
 import { Product } from './types';
 
-const BRIGHTDATA_API = 'https://api.brightdata.com/datasets/v3/trigger';
+const BRIGHTDATA_API = 'https://api.brightdata.com/datasets/v3/scrape';
 const DATASET_ID = 'gd_l7q7dkf244hwjntr0';
 
 export async function searchAmazonProducts(keyword: string): Promise<Product[]> {
@@ -20,12 +20,13 @@ export async function searchAmazonProducts(keyword: string): Promise<Product[]> 
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify([{ keyword, zipcode: '10001' }]),
+        body: JSON.stringify({ input: [{ keyword, zipcode: '10001' }] }),
       }
     );
 
     if (!res.ok) {
-      throw new Error(`Bright Data API error: ${res.status} ${res.statusText}`);
+      const body = await res.text().catch(() => '');
+      throw new Error(`Bright Data API error: ${res.status} ${res.statusText} — ${body}`);
     }
 
     const data = await res.json();
@@ -47,8 +48,8 @@ export async function searchAmazonProducts(keyword: string): Promise<Product[]> 
 }
 
 async function pollSnapshot(snapshotId: string, apiKey: string): Promise<Product[]> {
-  const maxAttempts = 10;
-  const delayMs = 2000;
+  const maxAttempts = 6;   // 6 × 30s = 3 minutes max
+  const delayMs = 30_000;  // API recommends 30s between polls
 
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, delayMs));
@@ -60,14 +61,17 @@ async function pollSnapshot(snapshotId: string, apiKey: string): Promise<Product
 
     if (res.status === 200) {
       const data = await res.json();
-      if (Array.isArray(data)) return data as Product[];
+      if (Array.isArray(data) && data.length > 0) return data as Product[];
     }
+    // 202 = still running, keep polling
+    console.log(`[brightdata] snapshot ${snapshotId} still running (attempt ${i + 1}/${maxAttempts})`);
   }
 
+  console.warn('[brightdata] snapshot timed out — returning mock data');
   return [];
 }
 
-function getMockProducts(keyword: string): Product[] {
+export function getMockProducts(keyword: string): Product[] {
   const base = keyword.toLowerCase();
   return [
     {

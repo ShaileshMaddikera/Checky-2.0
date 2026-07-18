@@ -72,17 +72,22 @@ async function ensureLoaded(c: MossLike): Promise<boolean> {
 
 function docToProduct(doc: MossResult): Product {
   const m = doc.metadata ?? {};
+  const numOrUndef = (v: unknown) => {
+    const n = parseFloat(v as string);
+    return isNaN(n) ? undefined : n;
+  };
+  const strOrUndef = (v: unknown) => (v && v !== '' ? (v as string) : undefined);
   return {
-    title: (m.title as string) ?? doc.text.slice(0, 80),
+    title: (m.title as string) || doc.text.slice(0, 80),
     url: (m.url as string) ?? '',
-    asin: (m.asin as string) ?? undefined,
-    price: m.price as number | undefined,
-    currency: (m.currency as string) ?? 'USD',
-    rating: m.rating as number | undefined,
-    reviews_count: m.reviews_count as number | undefined,
-    brand: m.brand as string | undefined,
-    main_image: m.main_image as string | undefined,
-    availability: m.availability as string | undefined,
+    asin: strOrUndef(m.asin),
+    price: numOrUndef(m.price),
+    currency: (m.currency as string) || 'USD',
+    rating: numOrUndef(m.rating),
+    reviews_count: numOrUndef(m.reviews_count),
+    brand: strOrUndef(m.brand),
+    main_image: strOrUndef(m.main_image),
+    availability: strOrUndef(m.availability),
   };
 }
 
@@ -115,11 +120,18 @@ export async function cacheProducts(products: Product[]): Promise<void> {
     .map((p) => ({
       id: p.asin ?? Buffer.from(p.url).toString('base64').slice(0, 32),
       text: [p.title, p.brand, p.description].filter(Boolean).join(' '),
+      // Moss WASM requires all metadata values to be strings
       metadata: {
-        title: p.title, url: p.url, asin: p.asin,
-        price: p.price, currency: p.currency, rating: p.rating,
-        reviews_count: p.reviews_count, brand: p.brand,
-        main_image: p.main_image, availability: p.availability,
+        title: p.title ?? '',
+        url: p.url ?? '',
+        asin: p.asin ?? '',
+        price: p.price != null ? String(p.price) : '',
+        currency: p.currency ?? 'USD',
+        rating: p.rating != null ? String(p.rating) : '',
+        reviews_count: p.reviews_count != null ? String(p.reviews_count) : '',
+        brand: p.brand ?? '',
+        main_image: p.main_image ?? '',
+        availability: p.availability ?? '',
       },
     }));
 
