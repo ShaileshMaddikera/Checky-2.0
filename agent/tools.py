@@ -15,7 +15,6 @@ import asyncio
 import json
 import os
 import re
-import threading
 import time
 import requests
 from dotenv import load_dotenv
@@ -49,19 +48,35 @@ SCRAPERS: dict[str, str] = {
     # "target":  "c_your_target_collector_id",
 }
 
-# Dataset marketplace (gd_... IDs) — discover_by=keyword scrape
+# Dataset marketplace (gd_... IDs) — discover_by=<keyword_field> scrape.
+# Each retailer's dataset has its own discovery param name and required extra
+# fields (found by probing /datasets/v3/scrape and reading its 400 error
+# messages) — keyword_field/discover_by aren't interchangeable across datasets.
 # Get from: brightdata.com/cp/datasets → your dataset → "API" tab
 # Trigger endpoint: POST /datasets/v3/scrape
-DATASETS: dict[str, str] = {
-    "amazon": "gd_l7q7dkf244hwjntr0",   # Amazon keyword product search ✅
-    # "walmart": "gd_your_walmart_id",
+DATASETS: dict[str, dict] = {
+    "amazon": {
+        "id": "gd_l7q7dkf244hwjntr0",
+        "discover_by": "keyword",
+        "keyword_field": "keyword",
+        "extra_fields": {"zipcode": "10001"},
+    },
+    # Walmart dataset (gd_l95fol7l1ru6rlo116) works but is much slower to
+    # return snapshots than Amazon/Target in practice — dropped to keep
+    # check_price() responsive. Re-add if Bright Data speeds it up.
+    "target": {
+        "id": "gd_ltppk5mx2lp0v1k0vo",
+        "discover_by": "keywords",
+        "keyword_field": "keywords",
+        "extra_fields": {},
+    },
 }
 
 BD_BASE       = "https://api.brightdata.com"
 BD_SCRAPER    = f"{BD_BASE}/dca"
 BD_DATASET    = f"{BD_BASE}/datasets/v3"
 POLL_INTERVAL = 10   # seconds between status polls
-MAX_WAIT_SECS = 120  # give up after 2 minutes; show mock + continue in bg
+MAX_WAIT_SECS = 150  # give up after 2.5 minutes; show mock + continue in bg (Target runs slower than Amazon)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -153,17 +168,21 @@ def _normalize_raw(raw: dict, source: str) -> dict | None:
     if not title:
         return None
 
+    images = raw.get("images")
+    image_from_list = images[0] if isinstance(images, list) and images else None
+
     return {
         "title":         title,
         "url":           clean(raw.get("url") or raw.get("product_url") or raw.get("link"), ""),
-        "asin":          clean(raw.get("asin") or raw.get("product_id")),
+        "asin":          clean(raw.get("asin") or raw.get("product_id") or raw.get("sku")),
         "price":         to_float(raw.get("price") or raw.get("final_price") or raw.get("sale_price")),
         "currency":      clean(raw.get("currency"), "USD"),
         "rating":        to_float(raw.get("rating") or raw.get("stars") or raw.get("rating_stars")),
         "reviews_count": int(to_float(raw.get("reviews_count") or raw.get("reviews")) or 0) or None,
         "brand":         clean(raw.get("brand") or raw.get("brand_name")),
-        "main_image":    clean(raw.get("main_image") or raw.get("image") or raw.get("thumbnail_url")),
+        "main_image":    clean(raw.get("main_image") or raw.get("image") or raw.get("thumbnail_url") or image_from_list),
         "availability":  clean(raw.get("availability") or raw.get("in_stock")),
+        "seller_name":   clean(raw.get("seller_name") or raw.get("seller")),
         "source":        source,
     }
 
@@ -314,20 +333,24 @@ def _trigger_scraper(source: str, collector_id: str, keyword: str, api_key: str)
 # Bright Data — Dataset API (gd_...) keyword discovery
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _trigger_dataset(source: str, dataset_id: str, keyword: str, api_key: str) -> list[dict]:
+def _trigger_dataset(source: str, config: dict, keyword: str, api_key: str) -> list[dict]:
     """
     Trigger a Bright Data dataset keyword-discover scrape and wait for results.
     """
+    dataset_id = config["id"]
+    discover_by = config["discover_by"]
+    input_item = {config["keyword_field"]: keyword, **config.get("extra_fields", {})}
+
     print(f"[tools]   → Triggering dataset '{source}' (id={dataset_id}) for '{keyword}'")
     try:
         resp = requests.post(
-            f"{BD_DATASET}/scrape?dataset_id={dataset_id}&type=discover_new&discover_by=keyword&format=json",
+            f"{BD_DATASET}/scrape?dataset_id={dataset_id}&type=discover_new&discover_by={discover_by}&format=json",
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}",
             },
-            json={"input": [{"keyword": keyword, "zipcode": "10001"}]},
-            timeout=60,
+            json={"input": [input_item]},
+            timeout=100,  # the initial trigger call itself (before any polling) can take >60s to ack
         )
         resp.raise_for_status()
         data = resp.json()
@@ -381,55 +404,53 @@ def _trigger_dataset(source: str, dataset_id: str, keyword: str, api_key: str) -
 # Orchestration — trigger all sources in parallel threads
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _trigger_all_scrapers(keyword: str) -> list[dict]:
+async def _run_scrapers_with_progress(keyword: str, on_progress=None) -> tuple[list[dict], bool]:
     """
-    Trigger every configured source (scrapers + datasets) in parallel threads.
-    Returns merged, normalized product list tagged by source.
+    Trigger every configured source (scrapers + datasets) concurrently, each
+    off the event loop thread via asyncio.to_thread. As each source finishes,
+    calls `await on_progress(completed, total, status)` so the caller can
+    stream live progress (e.g. over the LiveKit data channel) instead of the
+    caller only finding out once *everything* is done.
+
+    Returns (merged normalized product list tagged by source, used_mock_fallback).
     """
     api_key = os.getenv("BRIGHTDATA_API_KEY")
-    if not api_key:
-        print("[tools] BRIGHTDATA_API_KEY not set — using mock data")
-        return _mock_products(keyword)
+    sources_configured = list(SCRAPERS.keys()) + list(DATASETS.keys())
 
-    results: dict[str, list[dict]] = {}
-    threads = []
+    if not api_key or not sources_configured:
+        reason = "BRIGHTDATA_API_KEY not set" if not api_key else "no scrapers or datasets configured"
+        print(f"[tools] {reason} — using mock data")
+        return _mock_products(keyword), True
 
-    # Scraper Studio collectors (c_...)
-    for source, collector_id in SCRAPERS.items():
-        def run_scraper(s=source, cid=collector_id):
-            results[s] = _trigger_scraper(s, cid, keyword, api_key)
-        t = threading.Thread(target=run_scraper, daemon=True)
-        threads.append(t)
-        t.start()
+    total = len(sources_configured)
+    status: dict[str, str] = {s: "pending" for s in sources_configured}
 
-    # Dataset marketplace (gd_...)
-    for source, dataset_id in DATASETS.items():
-        def run_dataset(s=source, did=dataset_id):
-            results[s] = _trigger_dataset(s, did, keyword, api_key)
-        t = threading.Thread(target=run_dataset, daemon=True)
-        threads.append(t)
-        t.start()
+    async def run_source(source: str) -> tuple[str, list[dict]]:
+        if source in SCRAPERS:
+            products = await asyncio.to_thread(_trigger_scraper, source, SCRAPERS[source], keyword, api_key)
+        else:
+            products = await asyncio.to_thread(_trigger_dataset, source, DATASETS[source], keyword, api_key)
+        return source, products
 
-    if not threads:
-        print("[tools] No scrapers or datasets configured — using mock data")
-        return _mock_products(keyword)
+    tasks = [asyncio.create_task(run_source(s)) for s in sources_configured]
+    merged: list[dict] = []
+    completed = 0
 
-    # Wait for all threads (bounded by MAX_WAIT_SECS per thread)
-    for t in threads:
-        t.join(timeout=MAX_WAIT_SECS + 10)
-
-    # Merge results in priority order
-    merged = []
-    for source in list(SCRAPERS.keys()) + list(DATASETS.keys()):
-        merged.extend(results.get(source, []))
+    for coro in asyncio.as_completed(tasks):
+        source, products = await coro
+        completed += 1
+        status[source] = "done" if products else "empty"
+        merged.extend(products)
+        if on_progress:
+            await on_progress(completed, total, dict(status))
 
     if not merged:
         print("[tools] All sources failed — using mock data")
-        return _mock_products(keyword)
+        return _mock_products(keyword), True
 
     sources = {p["source"] for p in merged}
     print(f"[tools] ✅ Scraped {len(merged)} products from: {', '.join(sources)}")
-    return merged
+    return merged, False
 
 
 def _mock_products(keyword: str) -> list[dict]:
@@ -493,42 +514,21 @@ async def check_price(product_name: str) -> str:
             f"I found {len(cached)} options across {', '.join(sources)}. (cached)"
         )
 
-    # ── 2. Slow path: trigger scrapers ────────────────────────────────────────
-    sources_configured = list(SCRAPERS.keys()) + list(DATASETS.keys())
-    print(f"[tools] CACHE MISS — triggering scrapers: {sources_configured}")
-
-    # Send mock immediately so UI isn't blank
-    mock = _mock_products(product_name)
+    # ── 2. Cache miss ──────────────────────────────────────────────────────────
+    # Live Bright Data scraping used to run here on every miss, but a single
+    # scrape can take 1-3 minutes and Target/Walmart time out unpredictably —
+    # far too slow for a live voice demo. Checky now serves exclusively out of
+    # Moss, which is pre-seeded offline via `python load_snapshots.py` (loads
+    # Bright Data snapshot exports from agent/data/ in bulk). The scraper
+    # functions above (_run_scrapers_with_progress etc.) are kept for that
+    # offline seeding workflow — re-run a scrape, save the snapshot, load it —
+    # but are no longer called from the live check_price() path.
+    print(f"[tools] ❌ No cached data for {product_name!r}")
     await _publish({
         "action": "show_product",
-        "data": {"query": product_name, "products": mock, "source": "mock", "pending": True},
+        "data": {"query": product_name, "products": [], "source": "mock", "pending": False},
     })
-
-    # Run scrapers off the event loop thread — _trigger_all_scrapers does blocking
-    # requests + time.sleep polling + thread.join, which would otherwise freeze
-    # the whole agent process (including LiveKit's heartbeat) for up to MAX_WAIT_SECS.
-    products = await asyncio.to_thread(_trigger_all_scrapers, product_name)
-
-    # ── 3. Index ALL results into Moss ────────────────────────────────────────
-    # This is the key step: next time any similar product is searched,
-    # it'll be a sub-10ms Moss hit instead of triggering scrapers again.
-    await _cache_to_moss(products)
-
-    # ── 4. Send real results to UI ────────────────────────────────────────────
-    await _publish({
-        "action": "show_product",
-        "data": {
-            "query":    product_name,
-            "products": products,
-            "source":   "brightdata",
-            "pending":  False,
-        },
-    })
-
-    sources_found = list({p.get("source", "amazon") for p in products})
-    top = products[0] if products else {}
-    price_str = f"${top.get('price', 0):.2f}" if top.get("price") else "price unavailable"
     return (
-        f"{top.get('title', product_name)} is {price_str} on {top.get('source','Amazon').title()}. "
-        f"Found {len(products)} options across {', '.join(sources_found)}."
+        f"I don't have {product_name} in my catalog yet — try something like "
+        f"Coke, Sprite, Doritos, a teddy bear, or an iPhone."
     )

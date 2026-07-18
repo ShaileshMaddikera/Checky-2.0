@@ -38,10 +38,13 @@ export default function LiveKitCameraView({ onReady }: Props) {
 
   if (!localTrack) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-black">
+      <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--bg)' }}>
         <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
-          <span className="font-mono text-xs text-cyan-400">CONNECTING CAMERA…</span>
+          <div
+            className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+            style={{ borderColor: 'var(--accent-border)', borderTopColor: 'transparent' }}
+          />
+          <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Connecting camera…</span>
         </div>
       </div>
     );

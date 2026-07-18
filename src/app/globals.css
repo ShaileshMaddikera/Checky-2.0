@@ -1,11 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --hud-green: #ffffff;
-  --hud-blue: #93c5fd;
-  --hud-orange: #f59e0b;
-  --hud-bg: rgba(0, 0, 0, 0.3);
-  --hud-border: rgba(255, 255, 255, 0.15);
+  --bg: #08080b;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-strong: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca8;
+  --text-tertiary: #6b6b76;
+
+  --accent: #818cf8;
+  --accent-strong: #6366f1;
+  --accent-soft: rgba(129, 140, 248, 0.16);
+  --accent-border: rgba(129, 140, 248, 0.35);
+
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.14);
+  --success-border: rgba(52, 211, 153, 0.32);
+
+  --danger: #f87171;
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
 }
 
 * {
@@ -18,61 +37,38 @@ html,
 body {
   height: 100%;
   overflow: hidden;
-  background: #000;
-  font-family: 'Courier New', Courier, monospace;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-
-
-/* Pulse ring animation */
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.8);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
+/* Ambient background glow — soft, static, gives depth without being loud */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 40% at 15% 0%, rgba(129, 140, 248, 0.10), transparent 60%),
+    radial-gradient(50% 35% at 100% 100%, rgba(52, 211, 153, 0.06), transparent 60%);
 }
 
-.pulse-ring {
-  animation: pulse-ring 1.2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+/* Gentle pulse — replaces the old hard on/off hud-blink flicker */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
-/* Scan animation for capture */
-@keyframes scan-line {
-  0% {
-    transform: translateY(-100%);
-  }
-  100% {
-    transform: translateY(100%);
-  }
-}
-
-.scan-anim {
-  animation: scan-line 1s ease-in-out;
-}
-
-/* Blink animation for HUD elements */
-@keyframes hud-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.3;
-  }
-}
-
-.hud-blink {
-  animation: hud-blink 1s ease-in-out infinite;
+.pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
 }
 
 /* Slide up for results panel */
 @keyframes slide-up {
   from {
-    transform: translateY(100%);
+    transform: translateY(24px);
     opacity: 0;
   }
   to {
@@ -82,38 +78,32 @@ body {
 }
 
 .slide-up {
-  animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Glow effect - changed to subtle shadow for modern look */
-.glow-green {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  color: var(--hud-green);
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.glow-blue {
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-  color: var(--hud-blue);
+.fade-in {
+  animation: fade-in 0.3s ease-out;
 }
 
-.border-glow {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  border-color: var(--hud-border) !important;
-}
-
-/* Card glass */
-.glass-card {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+/* Glass panel — the core surface used by every card/sheet/pill */
+.glass-panel {
+  background: var(--surface);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 40px 0 rgba(0, 0, 0, 0.45);
 }
 
 /* Waveform bar animation for speaking indicator */
 @keyframes waveform-bar {
   0% {
     transform: scaleY(0.3);
-    opacity: 0.6;
+    opacity: 0.5;
   }
   100% {
     transform: scaleY(1);
@@ -136,10 +126,10 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.3);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 255, 136, 0.4);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
 }

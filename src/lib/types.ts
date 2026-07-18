@@ -59,7 +59,20 @@ export interface AgentPayloadShowProduct {
   };
 }
 
+export type ScrapeSourceStatus = 'pending' | 'done' | 'empty';
+
+export interface AgentPayloadScrapeProgress {
+  action: 'scrape_progress';
+  data: {
+    query: string;
+    completed: number;
+    total: number;
+    sources: Record<string, ScrapeSourceStatus>;
+  };
+}
+
 export type AgentPayload =
   | AgentPayloadReady
   | AgentPayloadSearching
-  | AgentPayloadShowProduct;
+  | AgentPayloadShowProduct
+  | AgentPayloadScrapeProgress;

@@ -84,7 +84,7 @@ class CheckyAgent(Agent):
         ],
     ) -> str:
         """
-        Look up the Amazon price and product details for a specific product.
+        Look up the cached price and product details across multiple retailers (like Amazon and Walmart) for a specific product.
         Call this when the user wants to check or compare prices for something visible in the camera.
         """
         return await shopping_tools.check_price(product_name)
