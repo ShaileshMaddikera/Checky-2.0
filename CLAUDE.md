@@ -20,6 +20,7 @@ Bright data dataset market place documentation: https://docs.brightdata.com/data
 ## Presentation flow
 
 - record some videos from Walgreens, Target, and 7 Eleven. (pointing product with fingers/just recording). These are for demo.
+- There are some competitors like shopsavvy, buyvia, and honey. But, one the difference of checky is that it designed to maintain the joy of offline shopping experience while consume smarter.
 
 ---
 
@@ -35,18 +36,21 @@ Bright data dataset market place documentation: https://docs.brightdata.com/data
 
 ### Running (two terminals)
 
-**Terminal 1 — OCR worker:**
+**Terminal 1 — OCR worker (uses claude OAuth session, no API key needed):**
+
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... npm run worker
+npm run worker
 ```
 
 **Terminal 2 — Next.js:**
+
 ```bash
 npm run dev
 # Open http://localhost:3000 in Chrome/Edge
 ```
 
 ### One-time setup
+
 ```bash
 npm install
 npm install @moss-dev/moss
@@ -59,7 +63,6 @@ npm install @moss-dev/moss
 - `MOSS_PROJECT_ID` — Moss project ID
 - `MOSS_PROJECT_KEY` — Moss project key
 - `OCR_WORKER_URL` — local OCR worker URL (default: http://localhost:3001)
-- `ANTHROPIC_API_KEY` — set in shell before `npm run worker` (NOT in .env.local)
 
 ### Search Flow
 
