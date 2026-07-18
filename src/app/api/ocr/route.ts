@@ -1,32 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+/**
+ * /api/ocr — RETIRED
+ *
+ * OCR is now handled natively by Gemini Multimodal Live via the Python agent.
+ * This route returns a 410 Gone so any stale client code gets a clear error.
+ */
 
-const WORKER_URL = process.env.OCR_WORKER_URL ?? 'http://localhost:3001';
+import { NextResponse } from 'next/server';
 
-export async function POST(req: NextRequest) {
-  try {
-    const { imageDataUrl } = await req.json();
-
-    if (!imageDataUrl || typeof imageDataUrl !== 'string') {
-      return NextResponse.json({ error: 'imageDataUrl required' }, { status: 400 });
-    }
-
-    // Delegate to local OCR worker (started with `npm run worker`)
-    const workerRes = await fetch(`${WORKER_URL}/ocr`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageDataUrl }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!workerRes.ok) {
-      return NextResponse.json({ text: null, source: 'worker_error' }, { status: 200 });
-    }
-
-    const data = await workerRes.json();
-    return NextResponse.json(data);
-  } catch (err) {
-    // Worker is not running — Next.js will fall back to Tesseract in the browser
-    console.warn('[api/ocr] Worker unreachable:', (err as Error).message);
-    return NextResponse.json({ text: null, source: 'worker_offline' }, { status: 200 });
-  }
+export async function POST() {
+  return NextResponse.json(
+    { error: 'OCR route retired. Vision is handled by the Gemini agent via LiveKit.' },
+    { status: 410 }
+  );
 }

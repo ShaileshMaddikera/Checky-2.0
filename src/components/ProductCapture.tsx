@@ -10,7 +10,7 @@ interface Props {
 
 export default function ProductCapture({ imageDataUrl, onConfirm, onCancel }: Props) {
   const [ocrText, setOcrText] = useState('');
-  const [ocrSource, setOcrSource] = useState<'claude' | 'tesseract' | null>(null);
+  const [ocrSource, setOcrSource] = useState<'gemini' | null>(null);
   const [inputText, setInputText] = useState('');
   const [ocrRunning, setOcrRunning] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -144,39 +144,25 @@ export default function ProductCapture({ imageDataUrl, onConfirm, onCancel }: Pr
   async function runOCR() {
     setOcrRunning(true);
     try {
-      // Try Claude Vision API first (most accurate for product packaging)
-      const cropped = await cropAndPreprocess(imageDataUrl);
+      // OCR is now handled by the Gemini agent via LiveKit.
+      // This component is a legacy fallback — product name comes from data channel.
       const visionRes = await fetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageDataUrl: cropped }),
+        body: JSON.stringify({ imageDataUrl }),
       });
 
       if (visionRes.ok) {
         const { text } = await visionRes.json();
         if (text) {
           setOcrText(text);
-          setOcrSource('claude');
+          setOcrSource('gemini');
           setInputText(text);
           return;
         }
       }
-
-      // Fallback: Tesseract on preprocessed cropped image
-      const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker('eng');
-      // PSM 6: assume a single uniform block of text — better for product labels
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await worker.setParameters({ tessedit_pageseg_mode: '6' as any });
-      const { data } = await worker.recognize(cropped);
-      await worker.terminate();
-      const text = pickBestLine(data.text);
-      setOcrSource('tesseract');
-      setOcrText(text);
-      setInputText(text);
     } catch (err) {
-      console.error('OCR failed:', err);
-      setOcrText('');
+      console.warn('OCR endpoint unavailable (Gemini handles this via LiveKit):', err);
     } finally {
       setOcrRunning(false);
     }
@@ -225,13 +211,13 @@ export default function ProductCapture({ imageDataUrl, onConfirm, onCancel }: Pr
         {ocrRunning ? (
           <div className="flex items-center gap-2 text-cyan-400 font-mono text-xs mb-3">
             <div className="w-3 h-3 border border-cyan-400 border-t-transparent rounded-full animate-spin" />
-            <span>Running OCR analysis...</span>
+            <span>Identifying product...</span>
           </div>
         ) : (
           ocrText && (
             <div className="font-mono text-xs text-gray-400 mb-2">
-              <span className={ocrSource === 'claude' ? 'text-purple-400' : 'text-gray-500'}>
-                {ocrSource === 'claude' ? '⚡ Claude Vision' : '🔍 Tesseract'}:
+              <span className="text-purple-400">
+                {ocrSource === 'gemini' ? '⚡ Gemini' : '🔍 Vision'}:
               </span>{' '}
               <span className="text-cyan-300">&quot;{ocrText}&quot;</span>
             </div>

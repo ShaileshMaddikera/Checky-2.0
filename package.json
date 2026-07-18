@@ -8,19 +8,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "worker": "node scripts/ocr-worker.mjs"
+    "agent": "cd agent && source .venv/bin/activate && python agent.py dev"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@livekit/components-react": "^2.9.5",
+    "@livekit/components-styles": "^1.1.7",
     "@moss-dev/moss": "^1.4.0",
     "@tailwindcss/postcss": "^4.3.3",
+    "livekit-client": "^2.13.6",
+    "livekit-server-sdk": "^2.13.1",
     "next": "^14.2.35",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tesseract.js": "^7.0.0"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",

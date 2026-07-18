@@ -1,45 +1,53 @@
 ## Project Ideas
 
-Goal: This is a realtime voice application to check the price in the online and help the smart shopping.
+Goal: This is a realtime voice application to check the price online and help with smart shopping.
 
-1. The user call 'Hey checky' (at least just visual effect like voice ai has activated)
-2. And point out the product they want to check and say 'check this out'.
-3. The application highlight the product in rectangle, and capture it. the captured product image show up and ocr the product name.
-4. Moss.dev search the product information from our database and show the same products in Amazon
-5. Compare the prices
-6. Below that row, there is a Similar items row.
-7. The user can exclude it or put in liked items bucket.
-
-- Please make sure the UI should be always show the picture/video that looks like a recording through a camera and the components should be on the overlay of the screen. I want to make it looks like a smart glass view but the application runs on a laptop or a mobile phone.
-
-### References
-
-moss.dev documentation: https://docs.moss.dev/docs
-Bright data dataset market place documentation: https://docs.brightdata.com/datasets/marketplace/overview
-
-## Presentation flow
-
-- record some videos from Walgreens, Target, and 7 Eleven. (pointing product with fingers/just recording). These are for demo.
-- There are some competitors like shopsavvy, buyvia, and honey. But, one the difference of checky is that it designed to maintain the joy of offline shopping experience while consume smarter.
+The user points their camera at a product, says "Hey Checky, check this out",
+and Gemini (watching the live video stream) identifies the product and looks up
+Amazon prices using Moss + Bright Data.
 
 ---
 
-## Implementation Status (MVP)
+## Architecture (LiveKit + Gemini Multimodal)
+
+```
+Browser (LiveKit Room) ──video+audio──▶ Python Agent (agent/agent.py)
+                                              │
+                                              ▼
+                                    Gemini 2.0 Flash (Multimodal Live)
+                                    sees camera + hears mic 24/7
+                                              │ tool call
+                                              ▼
+                                    check_price(product_name)
+                                    ├─ Moss cache (fast path)
+                                    └─ Bright Data scrape (slow path)
+                                              │ data channel
+                                              ▼
+                               Next.js useDataChannel() → UI overlay
+```
 
 ### Tech Stack
 
-- Next.js 14.2 + TypeScript 6 + Tailwind CSS v4
-- OCR: local worker (`npm run worker`) → Claude Haiku Vision, fallback Tesseract.js
-- Moss.dev JS SDK — semantic product cache (indexed from Bright Data results)
-- Bright Data Amazon Scraper API — keyword search + live prices
-- Web Speech API — voice activation
+- **Next.js 14.2** + TypeScript 6 + Tailwind CSS v4
+- **LiveKit Cloud** — real-time audio/video streaming room
+- **livekit-agents** (Python) — agent worker framework
+- **Gemini 2.0 Flash Multimodal Live** — vision + voice AI
+- **Moss.dev** — semantic product cache (sub-10ms after first load)
+- **Bright Data Amazon Scraper API** — live keyword search + prices
 
-### Running (two terminals)
+---
 
-**Terminal 1 — OCR worker (uses claude OAuth session, no API key needed):**
+## Running (two terminals)
+
+**Terminal 1 — Python Agent:**
 
 ```bash
-npm run worker
+cd agent
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # fill in your keys
+python agent.py dev
 ```
 
 **Terminal 2 — Next.js:**
@@ -49,34 +57,43 @@ npm run dev
 # Open http://localhost:3000 in Chrome/Edge
 ```
 
-### One-time setup
+---
+
+## One-time setup
 
 ```bash
 npm install
-npm install @moss-dev/moss
-# .env.local already has real API keys
 ```
 
-### Environment Variables
+Copy `.env.local.example` to `.env.local` and fill in:
+- `LIVEKIT_URL` + `NEXT_PUBLIC_LIVEKIT_URL` — from livekit.io
+- `LIVEKIT_API_KEY` + `LIVEKIT_API_SECRET` — from livekit.io
+- `BRIGHTDATA_API_KEY` — from brightdata.com
+- `MOSS_PROJECT_ID` + `MOSS_PROJECT_KEY` — from moss.dev
+- `GEMINI_API_KEY` — from aistudio.google.com (goes in `agent/.env`)
 
-- `BRIGHTDATA_API_KEY` — Bright Data API key (live Amazon search)
-- `MOSS_PROJECT_ID` — Moss project ID
-- `MOSS_PROJECT_KEY` — Moss project key
-- `OCR_WORKER_URL` — local OCR worker URL (default: http://localhost:3001)
+---
 
-### Search Flow
+## Search Flow
 
-1. Moss cache check (semantic, sub-10ms after first load)
-2. Cache miss → Bright Data Amazon API
-3. Results cached to Moss for future searches
+1. User says "Hey Checky, check this out" while pointing camera at product
+2. Gemini identifies product name from live video frame
+3. Agent calls `check_price(product_name)` tool
+4. Moss cache check (semantic, sub-10ms after first load)
+5. Cache miss → Bright Data Amazon API
+6. Results published via LiveKit data channel → Next.js renders overlay
+7. Gemini speaks result aloud ("That's Advil, $8.49 on Amazon")
 
-### OCR Flow
+---
 
-1. Capture → crop center 70% → grayscale + contrast
-2. POST to `/api/ocr` → forwarded to `localhost:3001` worker
-3. Worker: Claude Haiku Vision → product name
-4. Worker offline → Tesseract.js browser fallback
+## Presentation Flow
 
-### Design Doc
+- Record demo videos from Walgreens, Target, 7-Eleven (pointing products with fingers)
+- Competitors: ShopSavvy, BuyVia, Honey
+- Checky difference: preserves the joy of offline shopping while making it smarter
 
-`docs/superpowers/specs/2026-07-18-checky-mvp-design.md`
+---
+
+## Design Doc
+
+`docs/superpowers/`

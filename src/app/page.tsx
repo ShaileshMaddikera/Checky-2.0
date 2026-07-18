@@ -1,106 +1,82 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import CameraFeed, { CameraFeedHandle } from '@/components/CameraFeed';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { LiveKitRoom, RoomAudioRenderer, useDataChannel, useLocalParticipant } from '@livekit/components-react';
 import SmartGlassHUD from '@/components/SmartGlassHUD';
-import VoiceIndicator from '@/components/VoiceIndicator';
-import ProductCapture from '@/components/ProductCapture';
 import ProductResults from '@/components/ProductResults';
-import { useVoiceActivation } from '@/lib/useVoiceActivation';
-import { AppState, Product, SearchResult, CaptureData } from '@/lib/types';
+import LiveKitCameraView from '@/components/LiveKitCameraView';
+import { AppState, Product, SearchResult, AgentPayload } from '@/lib/types';
 
-export default function HomePage() {
+// Generate a random room name so LiveKit always triggers a fresh agent dispatch on reload
+const ROOM_NAME = `checky-room-${Math.random().toString(36).substring(2, 8)}`;
+
+// ── Inner app — must be inside <LiveKitRoom> to use LiveKit hooks ─────────────
+function CheckyApp() {
   const [appState, setAppState] = useState<AppState>('idle');
   const [cameraReady, setCameraReady] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [captureData, setCaptureData] = useState<CaptureData | null>(null);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [likedAsins, setLikedAsins] = useState<Set<string>>(new Set());
   const [excludedAsins, setExcludedAsins] = useState<Set<string>>(new Set());
+  const [agentConnected, setAgentConnected] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [chatInput, setChatInput] = useState('');
+  
+  const { localParticipant } = useLocalParticipant();
 
-  const cameraRef = useRef<CameraFeedHandle>(null);
-  const activationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function handleManualSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!chatInput.trim() || !localParticipant) return;
+    
+    setSearchQuery(chatInput);
+    setAppState('searching');
+    
+    const payload = JSON.stringify({ action: "manual_search", query: chatInput });
+    localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+    
+    setChatInput('');
+  }
 
-  const handleActivate = useCallback(() => {
-    if (appState !== 'idle' && appState !== 'listening') return;
-    setAppState('activated');
-    // Auto-deactivate after 8 seconds if no capture command
-    activationTimeoutRef.current = setTimeout(() => {
-      setAppState((s) => (s === 'activated' ? 'idle' : s));
-    }, 8000);
-  }, [appState]);
+  // ── Data Channel — receive product data from Python agent ─────────────────
+  useDataChannel((msg) => {
+    try {
+      const payload = JSON.parse(new TextDecoder().decode(msg.payload)) as AgentPayload;
 
-  const handleCapture = useCallback(() => {
-    if (appState !== 'activated') return;
-    if (activationTimeoutRef.current) clearTimeout(activationTimeoutRef.current);
+      switch (payload.action) {
+        case 'agent_ready':
+          setAgentConnected(true);
+          setAppState('listening');
+          break;
 
-    const imageDataUrl = cameraRef.current?.captureFrame();
-    if (!imageDataUrl) return;
+        case 'searching':
+          setSearchQuery(payload.query);
+          setAppState('searching');
+          break;
 
-    setCaptureData({ imageDataUrl, ocrText: '', confirmedText: '' });
-    setAppState('capturing');
-  }, [appState]);
-
-  const { isSupported: isVoiceSupported } = useVoiceActivation({
-    onActivate: handleActivate,
-    onCapture: handleCapture,
-    enabled: cameraReady && (appState === 'idle' || appState === 'listening' || appState === 'activated'),
-  });
-
-  // Start listening state when camera is ready
-  useEffect(() => {
-    if (cameraReady && appState === 'idle') {
-      setAppState('listening');
-    }
-  }, [cameraReady, appState]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.code === 'Space' && e.target === document.body) {
-        e.preventDefault();
-        if (appState === 'listening' || appState === 'idle') {
-          handleActivate();
-        } else if (appState === 'activated') {
-          handleCapture();
+        case 'show_product': {
+          const { query, products, source, pending } = payload.data;
+          setSearchResult({
+            query,
+            products,
+            timestamp: Date.now(),
+            source,
+            pending,
+          });
+          setAppState('results');
+          break;
         }
       }
-      if (e.code === 'Escape') {
-        if (activationTimeoutRef.current) clearTimeout(activationTimeoutRef.current);
-        setAppState(cameraReady ? 'listening' : 'idle');
-        setCaptureData(null);
-        setSearchResult(null);
-      }
+    } catch (e) {
+      console.warn('[page] data channel parse error:', e);
     }
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [appState, cameraReady, handleActivate, handleCapture]);
+  });
 
-  async function handleSearchConfirm(productName: string) {
-    setAppState('searching');
-    setCaptureData((prev) => prev ? { ...prev, confirmedText: productName } : null);
-
-    try {
-      const res = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: productName }),
-      });
-      const data = await res.json();
-      setSearchResult({
-        query: productName,
-        products: data.products ?? [],
-        timestamp: Date.now(),
-        source: data.source,
-        pending: data.pending ?? false,
-      });
-      setAppState('results');
-    } catch (err) {
-      console.error('Search failed:', err);
+  // When camera track is ready, enter listening state
+  const handleCameraReady = useCallback(() => {
+    setCameraReady(true);
+    if (!agentConnected) {
       setAppState('listening');
-      setCaptureData(null);
     }
-  }
+  }, [agentConnected]);
 
   function handleLike(product: Product) {
     const key = product.asin ?? product.url;
@@ -118,70 +94,26 @@ export default function HomePage() {
   }
 
   function handleResultsClose() {
-    setAppState('listening');
-    setCaptureData(null);
+    setAppState(agentConnected ? 'listening' : 'idle');
     setSearchResult(null);
+    setSearchQuery(null);
     setExcludedAsins(new Set());
   }
 
-  function handleCaptureCancel() {
-    setCaptureData(null);
-    setAppState('listening');
-  }
-
-  // Click anywhere to activate when idle/listening
-  function handleScreenTap() {
-    if (appState === 'listening') {
-      handleActivate();
-    } else if (appState === 'activated') {
-      handleCapture();
-    }
-  }
-
   return (
-    <div
-      className="relative w-screen h-screen overflow-hidden bg-black"
-      onClick={handleScreenTap}
-    >
-      {/* Camera feed - always behind everything */}
-      <CameraFeed
-        ref={cameraRef}
-        onReady={() => setCameraReady(true)}
-        onError={(err) => setCameraError(err)}
+    <div className="relative w-screen h-screen overflow-hidden bg-black">
+      {/* LiveKit audio renderer — plays Gemini's spoken responses */}
+      <RoomAudioRenderer />
+
+      {/* Live camera feed via LiveKit */}
+      <LiveKitCameraView onReady={handleCameraReady} />
+
+      {/* HUD overlay — always visible */}
+      <SmartGlassHUD
+        appState={appState}
+        likedCount={likedAsins.size}
+        agentConnected={agentConnected}
       />
-
-      {/* Camera error state */}
-      {cameraError && (
-        <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 30 }}>
-          <div className="glass-card rounded-2xl p-8 text-center max-w-sm mx-4">
-            <div className="text-4xl mb-4">📷</div>
-            <div className="font-mono text-sm glow-green mb-2">CAMERA REQUIRED</div>
-            <div className="font-mono text-xs text-gray-400 mb-4">{cameraError}</div>
-            <div className="font-mono text-xs text-gray-600">
-              Please allow camera access and refresh the page
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* HUD overlay - always visible */}
-      <SmartGlassHUD appState={appState} likedCount={likedAsins.size} />
-
-      {/* Voice / activation indicator */}
-      {!captureData && !searchResult && (
-        <VoiceIndicator appState={appState} isVoiceSupported={isVoiceSupported} />
-      )}
-
-      {/* Product capture + OCR */}
-      {appState === 'capturing' && captureData && (
-        <div onClick={(e) => e.stopPropagation()}>
-          <ProductCapture
-            imageDataUrl={captureData.imageDataUrl}
-            onConfirm={handleSearchConfirm}
-            onCancel={handleCaptureCancel}
-          />
-        </div>
-      )}
 
       {/* Searching indicator */}
       {appState === 'searching' && (
@@ -194,15 +126,11 @@ export default function HomePage() {
               className="w-16 h-16 rounded-full flex items-center justify-center"
               style={{ border: '2px solid var(--hud-blue)', boxShadow: '0 0 20px rgba(0,204,255,0.4)' }}
             >
-              <div
-                className="w-10 h-10 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin"
-              />
+              <div className="w-10 h-10 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
             </div>
-            <span className="font-mono text-xs glow-blue hud-blink">SCANNING AMAZON PRICES...</span>
-            {captureData?.confirmedText && (
-              <span className="font-mono text-xs text-gray-400">
-                &quot;{captureData.confirmedText}&quot;
-              </span>
+            <span className="font-mono text-xs glow-blue hud-blink">SCANNING AMAZON PRICES…</span>
+            {searchQuery && (
+              <span className="font-mono text-xs text-gray-400">&quot;{searchQuery}&quot;</span>
             )}
           </div>
         </div>
@@ -222,17 +150,123 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Tap hint for touch devices */}
-      {cameraReady && appState === 'listening' && !cameraError && (
+      {/* Manual Search Input */}
+      {cameraReady && (appState === 'listening' || appState === 'idle') && (
+        <div className="absolute bottom-10 inset-x-0 flex justify-center" style={{ zIndex: 20 }}>
+          <form 
+            onSubmit={handleManualSearch}
+            className="w-full max-w-md mx-4 glass-card rounded-full overflow-hidden flex"
+          >
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Or type a product name to search..."
+              className="w-full bg-transparent border-none outline-none text-white px-6 py-3 font-mono text-sm placeholder:text-gray-500"
+              disabled={!agentConnected}
+            />
+            <button 
+              type="submit"
+              disabled={!chatInput.trim() || !agentConnected}
+              className="px-6 text-cyan-400 font-mono text-sm font-bold disabled:opacity-50 hover:bg-white/5 transition-colors"
+            >
+              SEARCH
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Camera connecting state */}
+      {!cameraReady && (
         <div
-          className="absolute bottom-20 inset-x-0 text-center pointer-events-none"
-          style={{ zIndex: 10 }}
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          style={{ zIndex: 30 }}
         >
-          <p className="font-mono text-xs text-gray-600">
-            Tap anywhere to activate
-          </p>
+          <div className="glass-card rounded-2xl p-8 text-center max-w-sm mx-4">
+            <div className="text-4xl mb-4">📷</div>
+            <div className="font-mono text-sm glow-green mb-2">INITIALISING CAMERA</div>
+            <div className="font-mono text-xs text-gray-400">
+              Allow camera &amp; microphone access when prompted
+            </div>
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+// ── Outer shell — fetches LiveKit token then mounts <LiveKitRoom> ─────────────
+export default function HomePage() {
+  const [token, setToken] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const liveKitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+
+  useEffect(() => {
+    const identity = `user-${Math.random().toString(36).slice(2, 8)}`;
+    fetch(`/api/token?room=${ROOM_NAME}&identity=${identity}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.token) setToken(d.token);
+        else setTokenError(d.error ?? 'Token fetch failed');
+      })
+      .catch((e) => setTokenError(String(e)));
+  }, []);
+
+  if (tokenError) {
+    return (
+      <div className="w-screen h-screen bg-black flex items-center justify-center">
+        <div className="glass-card rounded-2xl p-8 text-center max-w-sm mx-4">
+          <div className="text-4xl mb-4">⚠️</div>
+          <div className="font-mono text-sm glow-green mb-2">LIVEKIT NOT CONFIGURED</div>
+          <div className="font-mono text-xs text-gray-400 mb-3">{tokenError}</div>
+          <div className="font-mono text-xs text-gray-600 text-left space-y-1">
+            <div>1. Create account at livekit.io</div>
+            <div>2. Add to <span className="text-cyan-400">.env.local</span>:</div>
+            <div className="pl-3 text-cyan-300">LIVEKIT_API_KEY=...</div>
+            <div className="pl-3 text-cyan-300">LIVEKIT_API_SECRET=...</div>
+            <div className="pl-3 text-cyan-300">NEXT_PUBLIC_LIVEKIT_URL=wss://...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div className="w-screen h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 rounded-full border-2 border-green-400 border-t-transparent animate-spin" />
+          <span className="font-mono text-xs glow-green">CONNECTING TO CHECKY…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!liveKitUrl) {
+    return (
+      <div className="w-screen h-screen bg-black flex items-center justify-center">
+        <div className="glass-card rounded-2xl p-8 text-center max-w-sm mx-4">
+          <div className="font-mono text-sm glow-green mb-2">MISSING ENV VAR</div>
+          <div className="font-mono text-xs text-cyan-300">NEXT_PUBLIC_LIVEKIT_URL</div>
+          <div className="font-mono text-xs text-gray-500 mt-2">Add it to .env.local and restart.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <LiveKitRoom
+      video={true}
+      audio={true}
+      token={token}
+      serverUrl={liveKitUrl}
+      options={{
+        adaptiveStream: true,
+        dynacast: true,
+      }}
+      style={{ width: '100vw', height: '100vh' }}
+    >
+      <CheckyApp />
+    </LiveKitRoom>
   );
 }

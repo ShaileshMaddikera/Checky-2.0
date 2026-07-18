@@ -25,6 +25,26 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+const SOURCE_STYLES: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  amazon:  { label: 'Amazon',  color: '#FF9900', bg: 'rgba(255,153,0,0.12)',  border: 'rgba(255,153,0,0.35)'  },
+  walmart: { label: 'Walmart', color: '#0071CE', bg: 'rgba(0,113,206,0.12)', border: 'rgba(0,113,206,0.35)' },
+  target:  { label: 'Target',  color: '#CC0000', bg: 'rgba(204,0,0,0.12)',   border: 'rgba(204,0,0,0.35)'   },
+  ebay:    { label: 'eBay',    color: '#E53238', bg: 'rgba(229,50,56,0.12)', border: 'rgba(229,50,56,0.35)' },
+};
+
+function SourceBadge({ source }: { source?: string }) {
+  if (!source) return null;
+  const s = SOURCE_STYLES[source] ?? { label: source, color: '#aaa', bg: 'rgba(170,170,170,0.1)', border: 'rgba(170,170,170,0.3)' };
+  return (
+    <span
+      className="font-mono text-xs px-1.5 py-0.5 rounded"
+      style={{ background: s.bg, border: `1px solid ${s.border}`, color: s.color }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
 function ProductCard({
   product,
   isLiked,
@@ -84,6 +104,11 @@ function ProductCard({
 
       {/* Info */}
       <div className={`flex flex-col flex-1 ${isFeatured ? 'p-3' : 'p-2'}`}>
+        {/* Source badge */}
+        <div className="mb-1">
+          <SourceBadge source={product.source} />
+        </div>
+
         <p
           className="font-mono text-white leading-snug mb-1"
           style={{ fontSize: isFeatured ? '0.75rem' : '0.65rem' }}
@@ -100,7 +125,7 @@ function ProductCard({
           </p>
         )}
 
-        {product.rating !== undefined && (
+        {product.rating != null && (
           <div className="flex items-center gap-1 mt-1">
             <StarRating rating={product.rating} />
             {product.reviews_count && (
@@ -113,7 +138,7 @@ function ProductCard({
 
         {/* Price */}
         <div className="mt-auto pt-2">
-          {product.price !== undefined ? (
+          {product.price != null ? (
             <span
               className="font-mono font-bold glow-green"
               style={{ fontSize: isFeatured ? '1rem' : '0.8rem' }}
@@ -183,7 +208,7 @@ export default function ProductResults({ result, likedAsins, excludedAsins, onLi
   const similar = visible.slice(1);
 
   const pricesSorted = visible
-    .filter((p) => p.price !== undefined)
+    .filter((p) => p.price != null)
     .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
   const cheapest = pricesSorted[0];
   const priceDiff =
@@ -211,6 +236,18 @@ export default function ProductResults({ result, likedAsins, excludedAsins, onLi
             <span className="font-mono text-xs text-gray-500">
               &quot;{result.query}&quot; · {visible.length} results
             </span>
+            {/* Source breakdown badges */}
+            {(['amazon','walmart','target','ebay'] as const).map((src) => {
+              const count = visible.filter(p => p.source === src).length;
+              if (!count) return null;
+              const s = SOURCE_STYLES[src];
+              return (
+                <span key={src} className="font-mono text-xs px-1.5 py-0.5 rounded"
+                  style={{ background: s.bg, border: `1px solid ${s.border}`, color: s.color }}>
+                  {s.label} {count}
+                </span>
+              );
+            })}
             {result.source === 'moss' && (
               <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: 'rgba(170,0,255,0.15)', border: '1px solid rgba(170,0,255,0.4)', color: '#c084fc' }}>
                 ⚡ cached

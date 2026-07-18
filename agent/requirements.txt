@@ -1,0 +1,6 @@
+# Modern livekit-agents v1.x with Google plugin
+# Install: pip install -r requirements.txt
+livekit-agents[google]>=1.0.0
+requests>=2.32.0
+python-dotenv>=1.0.0
+moss

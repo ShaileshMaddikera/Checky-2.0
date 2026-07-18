@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --hud-green: #00ff88;
-  --hud-blue: #00ccff;
-  --hud-orange: #ff6600;
-  --hud-bg: rgba(0, 0, 0, 0.65);
-  --hud-border: rgba(0, 255, 136, 0.4);
+  --hud-green: #ffffff;
+  --hud-blue: #93c5fd;
+  --hud-orange: #f59e0b;
+  --hud-bg: rgba(0, 0, 0, 0.3);
+  --hud-border: rgba(255, 255, 255, 0.15);
 }
 
 * {
@@ -22,57 +22,7 @@ body {
   font-family: 'Courier New', Courier, monospace;
 }
 
-/* Scanline overlay effect */
-.scanlines::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.08) 2px,
-    rgba(0, 0, 0, 0.08) 4px
-  );
-  pointer-events: none;
-  z-index: 1;
-}
 
-/* HUD corner brackets */
-.hud-corner-tl,
-.hud-corner-tr,
-.hud-corner-bl,
-.hud-corner-br {
-  position: absolute;
-  width: 28px;
-  height: 28px;
-  border-color: var(--hud-green);
-  border-style: solid;
-}
-
-.hud-corner-tl {
-  top: 0;
-  left: 0;
-  border-width: 2px 0 0 2px;
-}
-
-.hud-corner-tr {
-  top: 0;
-  right: 0;
-  border-width: 2px 2px 0 0;
-}
-
-.hud-corner-bl {
-  bottom: 0;
-  left: 0;
-  border-width: 0 0 2px 2px;
-}
-
-.hud-corner-br {
-  bottom: 0;
-  right: 0;
-  border-width: 0 2px 2px 0;
-}
 
 /* Pulse ring animation */
 @keyframes pulse-ring {
@@ -135,32 +85,48 @@ body {
   animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Glow effect */
+/* Glow effect - changed to subtle shadow for modern look */
 .glow-green {
-  text-shadow: 0 0 8px var(--hud-green), 0 0 16px var(--hud-green);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   color: var(--hud-green);
 }
 
 .glow-blue {
-  text-shadow: 0 0 8px var(--hud-blue);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   color: var(--hud-blue);
 }
 
 .border-glow {
-  box-shadow: 0 0 8px rgba(0, 255, 136, 0.5), inset 0 0 8px rgba(0, 255, 136, 0.1);
-  border-color: var(--hud-green) !important;
-}
-
-/* Vignette */
-.vignette {
-  background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.7) 100%);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-color: var(--hud-border) !important;
 }
 
 /* Card glass */
 .glass-card {
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 255, 136, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Waveform bar animation for speaking indicator */
+@keyframes waveform-bar {
+  0% {
+    transform: scaleY(0.3);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* LiveKit video element resets */
+[data-lk-track-ref-source] video,
+.lk-participant-tile video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
 }
 
 /* Scrollbar styling */
