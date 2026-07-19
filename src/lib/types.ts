@@ -71,8 +71,16 @@ export interface AgentPayloadScrapeProgress {
   };
 }
 
+export type GeminiVoiceState = 'initializing' | 'idle' | 'listening' | 'thinking' | 'speaking';
+
+export interface AgentPayloadVoiceState {
+  action: 'agent_state';
+  state: GeminiVoiceState;
+}
+
 export type AgentPayload =
   | AgentPayloadReady
   | AgentPayloadSearching
   | AgentPayloadShowProduct
-  | AgentPayloadScrapeProgress;
+  | AgentPayloadScrapeProgress
+  | AgentPayloadVoiceState;

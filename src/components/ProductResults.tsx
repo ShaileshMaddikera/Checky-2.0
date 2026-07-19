@@ -204,7 +204,7 @@ export default function ProductResults({ result, likedAsins, excludedAsins, onLi
 
   return (
     <div
-      className="absolute inset-x-0 bottom-0 slide-up"
+      className="fixed inset-x-0 bottom-0 slide-up"
       style={{ zIndex: 40, maxHeight: '68vh' }}
     >
       <div

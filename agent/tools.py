@@ -28,6 +28,11 @@ load_dotenv()
 _STOPWORDS = {
     "the", "a", "an", "of", "pack", "count", "ct", "oz", "pk", "size",
     "and", "for", "with", "to", "in", "on",
+    # Generic marketing adjectives that show up across unrelated product
+    # categories — matching on these alone caused false positives (e.g. "Extra-Dry
+    # Skin" gel matching "Canada Dry" soda purely on the shared word "dry").
+    "extra", "dry", "fresh", "new", "original", "classic", "premium",
+    "natural", "real", "flavor", "flavored", "great", "value",
 }
 
 
@@ -122,8 +127,16 @@ async def _ensure_index_loaded() -> bool:
         print("[tools] ✅ Moss index loaded")
         return True
     except Exception as e:
-        print(f"[tools] Moss index not found (will create on first write): {e}")
-        _moss_index_exists = False
+        # Only a genuine "index doesn't exist" error means we should create one on
+        # next write. Anything else (rate limits, auth, network errors) is NOT
+        # evidence the index is missing — misclassifying it as "not found" risks
+        # calling create_index() on an index that already has real data in it.
+        if "INDEX_NOT_FOUND" in str(e) or "not found" in str(e).lower():
+            print(f"[tools] Moss index not found (will create on first write): {e}")
+            _moss_index_exists = False
+        else:
+            print(f"[tools] ❌ Moss index load FAILED (not a missing-index error — "
+                  f"check quota/auth/network, do not assume the index needs recreating): {e}")
         return False
 
 

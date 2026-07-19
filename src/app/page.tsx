@@ -1,18 +1,25 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { LiveKitRoom, RoomAudioRenderer, useDataChannel, useLocalParticipant } from '@livekit/components-react';
+import { useState, useCallback, useEffect } from 'react';
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  useDataChannel,
+  useLocalParticipant,
+  useAudioPlayback,
+} from '@livekit/components-react';
 import SmartGlassHUD from '@/components/SmartGlassHUD';
 import ProductResults from '@/components/ProductResults';
+import VoiceOrb from '@/components/VoiceOrb';
 import LiveKitCameraView from '@/components/LiveKitCameraView';
-import { AppState, Product, SearchResult, AgentPayload, ScrapeSourceStatus } from '@/lib/types';
+import { AppState, Product, SearchResult, AgentPayload, ScrapeSourceStatus, GeminiVoiceState } from '@/lib/types';
 
 // Generate a random room name so LiveKit always triggers a fresh agent dispatch on reload
 const ROOM_NAME = `checky-room-${Math.random().toString(36).substring(2, 8)}`;
 
 // ── Inner app — must be inside <LiveKitRoom> to use LiveKit hooks ─────────────
 function CheckyApp() {
-  const [appState, setAppState] = useState<AppState>('idle');
+  const [appState, setAppState] = useState<AppState>('listening');
   const [cameraReady, setCameraReady] = useState(false);
   const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [likedAsins, setLikedAsins] = useState<Set<string>>(new Set());
@@ -20,28 +27,45 @@ function CheckyApp() {
   const [agentConnected, setAgentConnected] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
+  const [voiceState, setVoiceState] = useState<GeminiVoiceState>('idle');
   const [scrapeProgress, setScrapeProgress] = useState<{
     completed: number;
     total: number;
     sources: Record<string, ScrapeSourceStatus>;
   } | null>(null);
-  
+
   const { localParticipant } = useLocalParticipant();
+  // Browsers block autoplay of remote audio until a user gesture unlocks it —
+  // without this, Gemini's spoken replies are generated and sent but never
+  // actually play, which looks exactly like "voice doesn't work".
+  const { canPlayAudio, startAudio } = useAudioPlayback();
+
+  const agentSpeaking = voiceState === 'speaking';
+
+  const handleCameraReady = useCallback(() => setCameraReady(true), []);
+
+  function handleScan() {
+    if (!localParticipant) return;
+    setSearchQuery(null);
+    setAppState('searching');
+    const payload = JSON.stringify({ action: 'scan_request' });
+    localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
+  }
 
   function handleManualSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!chatInput.trim() || !localParticipant) return;
-    
+
     setSearchQuery(chatInput);
     setAppState('searching');
-    
-    const payload = JSON.stringify({ action: "manual_search", query: chatInput });
+
+    const payload = JSON.stringify({ action: 'manual_search', query: chatInput });
     localParticipant.publishData(new TextEncoder().encode(payload), { reliable: true });
-    
+
     setChatInput('');
   }
 
-  // ── Data Channel — receive product data from Python agent ─────────────────
+  // ── Data Channel — receive product data + voice state from Python agent ───
   useDataChannel((msg) => {
     try {
       const payload = JSON.parse(new TextDecoder().decode(msg.payload)) as AgentPayload;
@@ -50,6 +74,10 @@ function CheckyApp() {
         case 'agent_ready':
           setAgentConnected(true);
           setAppState('listening');
+          break;
+
+        case 'agent_state':
+          setVoiceState(payload.state);
           break;
 
         case 'searching':
@@ -83,14 +111,6 @@ function CheckyApp() {
     }
   });
 
-  // When camera track is ready, enter listening state
-  const handleCameraReady = useCallback(() => {
-    setCameraReady(true);
-    if (!agentConnected) {
-      setAppState('listening');
-    }
-  }, [agentConnected]);
-
   function handleLike(product: Product) {
     const key = product.asin ?? product.url;
     setLikedAsins((prev) => {
@@ -114,24 +134,124 @@ function CheckyApp() {
   }
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+    <div className="relative w-screen h-screen flex overflow-hidden" style={{ background: 'var(--bg)' }}>
       {/* LiveKit audio renderer — plays Gemini's spoken responses */}
       <RoomAudioRenderer />
 
-      {/* Live camera feed via LiveKit */}
-      <LiveKitCameraView onReady={handleCameraReady} />
+      {/* Audio unlock gate — small, non-blocking. Any click satisfies the browser's
+          autoplay gesture requirement without covering the rest of the UI. */}
+      {!canPlayAudio && (
+        <button
+          onClick={() => startAudio()}
+          className="fixed top-4 left-1/2 -translate-x-1/2 glass-panel rounded-full px-4 py-2 flex items-center gap-2 fade-in"
+          style={{ zIndex: 50, border: '1px solid var(--accent-border)' }}
+        >
+          <span className="text-[15px]">🔊</span>
+          <span className="text-[12px] font-medium" style={{ color: 'var(--text-primary)' }}>
+            Tap to enable sound
+          </span>
+        </button>
+      )}
 
-      {/* HUD overlay — always visible */}
-      <SmartGlassHUD
-        appState={appState}
-        likedCount={likedAsins.size}
-        agentConnected={agentConnected}
-      />
+      {/* Voice panel — right half of the screen, full height. Voice-reactive
+          orb is the centerpiece; camera is a small corner thumbnail. */}
+      <div
+        className="relative order-2 h-full flex-shrink-0 overflow-hidden"
+        style={{
+          width: '50%',
+          borderLeft: '1px solid var(--border)',
+          background:
+            'radial-gradient(60% 50% at 50% 40%, rgba(129,140,248,0.10), transparent 70%), var(--bg)',
+        }}
+      >
+        <SmartGlassHUD appState={appState} agentConnected={agentConnected} />
+        <VoiceOrb voiceState={voiceState} agentConnected={agentConnected} />
 
-      {/* Searching indicator */}
+        {/* Camera — small picture-in-picture thumbnail, bottom-right corner */}
+        <div className="absolute bottom-4 right-4 flex items-end gap-2" style={{ zIndex: 8 }}>
+          {cameraReady && (appState === 'listening' || appState === 'idle') && (
+            <button
+              onClick={handleScan}
+              disabled={!agentConnected}
+              className="glass-panel w-9 h-9 rounded-full flex items-center justify-center text-sm disabled:opacity-30 transition-transform active:scale-95 flex-shrink-0"
+              style={{ border: '1px solid var(--accent-border)' }}
+              title="Scan item with camera"
+            >
+              📷
+            </button>
+          )}
+          <div
+            className="relative rounded-2xl overflow-hidden flex-shrink-0"
+            style={{
+              width: 128,
+              height: 96,
+              border: '1px solid var(--border)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              background: '#000',
+            }}
+          >
+            <LiveKitCameraView onReady={handleCameraReady} />
+          </div>
+        </div>
+      </div>
+
+      {/* App area — left half of the screen */}
+      <div className="order-1 flex-1 relative flex flex-col px-6 pt-5 pb-6 min-h-0">
+        {likedAsins.size > 0 && (
+          <div
+            className="absolute top-4 right-4 flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full glass-panel"
+            style={{ zIndex: 5 }}
+          >
+            <span style={{ color: '#f472b6' }}>♥</span>
+            <span style={{ color: 'var(--text-primary)' }}>{likedAsins.size} saved</span>
+          </div>
+        )}
+
+        <div className="text-center text-[12px] mb-2 min-h-[1.5em]" style={{ color: 'var(--text-secondary)' }}>
+          {(appState === 'idle' || appState === 'listening') && !agentConnected && (
+            <span>Waiting for AI agent to connect…</span>
+          )}
+          {appState === 'listening' && agentConnected && !agentSpeaking && (
+            <span style={{ color: 'var(--text-primary)' }}>
+              Say &quot;Hey Checky, check this out&quot;, tap the camera, or search below
+            </span>
+          )}
+          {agentSpeaking && <span style={{ color: 'var(--accent)' }}>Gemini is responding…</span>}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Manual Search Input */}
+        {(appState === 'listening' || appState === 'idle') && (
+          <form
+            onSubmit={handleManualSearch}
+            className="w-full glass-panel rounded-full overflow-hidden flex"
+          >
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="Search a product…"
+              className="w-full bg-transparent border-none outline-none px-5 py-3 text-[13px] placeholder:text-[var(--text-tertiary)]"
+              style={{ color: 'var(--text-primary)' }}
+              disabled={!agentConnected}
+            />
+            <button
+              type="submit"
+              disabled={!chatInput.trim() || !agentConnected}
+              className="px-5 text-[13px] font-medium disabled:opacity-30 transition-opacity"
+              style={{ color: 'var(--accent)' }}
+            >
+              Search
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* Searching indicator — centered over the whole viewport */}
       {appState === 'searching' && (
         <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          className="fixed inset-0 flex items-center justify-center pointer-events-none"
           style={{ zIndex: 30 }}
         >
           <div className="glass-panel rounded-3xl flex flex-col items-center gap-3 w-full max-w-xs px-7 py-7 fade-in">
@@ -209,52 +329,6 @@ function CheckyApp() {
             onExclude={handleExclude}
             onClose={handleResultsClose}
           />
-        </div>
-      )}
-
-      {/* Manual Search Input */}
-      {cameraReady && (appState === 'listening' || appState === 'idle') && (
-        <div className="absolute bottom-8 inset-x-0 flex justify-center" style={{ zIndex: 20 }}>
-          <form
-            onSubmit={handleManualSearch}
-            className="w-full max-w-md mx-4 glass-panel rounded-full overflow-hidden flex"
-          >
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Search a product…"
-              className="w-full bg-transparent border-none outline-none px-5 py-3 text-[13px] placeholder:text-[var(--text-tertiary)]"
-              style={{ color: 'var(--text-primary)' }}
-              disabled={!agentConnected}
-            />
-            <button
-              type="submit"
-              disabled={!chatInput.trim() || !agentConnected}
-              className="px-5 text-[13px] font-medium disabled:opacity-30 transition-opacity"
-              style={{ color: 'var(--accent)' }}
-            >
-              Search
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* Camera connecting state */}
-      {!cameraReady && (
-        <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
-          style={{ zIndex: 30 }}
-        >
-          <div className="glass-panel rounded-3xl p-8 text-center max-w-sm mx-4">
-            <div className="text-3xl mb-3">📷</div>
-            <div className="text-[13px] font-medium mb-1.5" style={{ color: 'var(--text-primary)' }}>
-              Initializing camera
-            </div>
-            <div className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
-              Allow camera &amp; microphone access when prompted
-            </div>
-          </div>
         </div>
       )}
     </div>
